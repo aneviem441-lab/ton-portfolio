@@ -193,6 +193,16 @@
   .send-form .hint { font-size: .72rem; color: var(--muted); line-height: 1.5; margin: 0; }
   .send-form button { align-self: flex-start; }
 
+  .swap-row { display: flex; gap: .6rem; }
+  .swap-row > div { flex: 1; }
+  .send-form select {
+    font-family: inherit; font-size: .85rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: .6rem .75rem; width: 100%;
+  }
+  .quote { font-size: .78rem; line-height: 1.7; color: var(--muted); margin: 0; }
+  .quote b { color: var(--text); font-weight: 500; }
+
   .log {
     font-size: .78rem; line-height: 1.7; color: var(--muted);
     border-left: 2px solid var(--line);
@@ -316,6 +326,33 @@
         Nepridáva komentár/memo; ak ho cieľová adresa (napr. depozitná adresa burzy)
         vyžaduje, pošli radšej priamo cez appku peňaženky, inak sa platba nemusí
         správne priradiť.
+      </p>
+    </div>
+  </section>
+
+  <section class="panel" id="swapPanel" hidden>
+    <h2>Vymeniť tokeny</h2>
+    <div class="send-form">
+      <div class="swap-row">
+        <div>
+          <label for="swapFrom">Dávam</label>
+          <select id="swapFrom"></select>
+        </div>
+        <div>
+          <label for="swapTo">Dostanem</label>
+          <select id="swapTo"></select>
+        </div>
+      </div>
+      <div>
+        <label for="swapAmount">Suma</label>
+        <input type="text" id="swapAmount" inputmode="decimal" placeholder="0.0">
+      </div>
+      <p class="quote" id="swapQuote">Zadaj sumu a ukáže sa živý kurz zo STON.fi.</p>
+      <button class="act" id="btn-swap" type="button">Vymeniť</button>
+      <p class="hint">
+        Výmena ide cez smart kontrakt STON.fi priamo z tvojej peňaženky, tokeny prídu späť
+        do nej. Obsahuje poplatok služby 1 % (STON.fi referral) a sieťový poplatok asi 0,3 TON,
+        ktorý sa z väčšej časti vráti. Transakciu vždy potvrdzuješ v peňaženke.
       </p>
     </div>
   </section>
@@ -527,7 +564,7 @@ function render(wallet) {
   if (!wallet) {
     rail.dataset.state = 'waiting';
     $('railText').textContent = 'Čaká sa na pripojenie';
-    ['panel', 'actions', 'total', 'assets', 'sendPanel', 'txs'].forEach(id => $(id).hidden = true);
+    ['panel', 'actions', 'total', 'assets', 'sendPanel', 'swapPanel', 'txs'].forEach(id => $(id).hidden = true);
     return;
   }
 
@@ -541,6 +578,7 @@ function render(wallet) {
   $('panel').hidden = false;
   $('actions').hidden = false;
   $('sendPanel').hidden = false;
+  $('swapPanel').hidden = false;
 
   loadPortfolio(wallet);
 }
@@ -604,6 +642,97 @@ $('btn-send').addEventListener('click', async () => {
     say('Transakcia sa neuskutočnila: ' + (e.message || e), 'err');
   } finally {
     $('btn-send').disabled = false;
+  }
+});
+
+/* ---------- výmena tokenov (STON.fi, poplatok služby 1 %) ---------- */
+
+const SWAP_API = 'https://preauth-terminal.onrender.com/api/swap';
+const SWAP_FEE_BPS = 100;
+const SWAP_REFERRAL = 'UQCELV4NjXEKds3t_JO0axEwfi58nq0GpVtfuXKj84qyIx0f';
+const SWAP_TOKENS = ['TON', 'USDT', 'NOT', 'DOGS', 'STON'];
+let swapSeq = 0;
+let swapTimer = null;
+let swapBusy = false;
+
+(function initSwap() {
+  for (const id of ['swapFrom', 'swapTo']) {
+    $(id).innerHTML = SWAP_TOKENS.map(t => `<option value="${t}">${t}</option>`).join('');
+  }
+  $('swapFrom').value = 'TON';
+  $('swapTo').value = 'USDT';
+  const changed = () => { clearTimeout(swapTimer); swapTimer = setTimeout(swapQuote, 350); };
+  $('swapFrom').addEventListener('change', changed);
+  $('swapTo').addEventListener('change', changed);
+  $('swapAmount').addEventListener('input', changed);
+})();
+
+function swapParams() {
+  return {
+    from: $('swapFrom').value,
+    to: $('swapTo').value,
+    amount: $('swapAmount').value.trim().replace(',', '.')
+  };
+}
+
+function showQuote(q) {
+  $('swapQuote').innerHTML =
+    `Dostaneš asi <b>${q.receiveAmount} ${q.to}</b> (minimum ${q.minReceiveAmount}).<br>` +
+    `${q.rateLabel} · vplyv na cenu ${q.priceImpactLabel} · poplatok služby ${q.serviceFeeLabel} · sieť ~${q.networkFeeTon} TON`;
+}
+
+async function swapQuote() {
+  const seq = ++swapSeq;
+  const p = swapParams();
+  if (p.from === p.to) { $('swapQuote').textContent = 'Vyber dva rôzne tokeny.'; return; }
+  if (!p.amount || !(Number(p.amount) > 0)) { $('swapQuote').textContent = 'Zadaj sumu a ukáže sa živý kurz zo STON.fi.'; return; }
+  $('swapQuote').textContent = 'Načítavam kurz…';
+  try {
+    const r = await fetch(SWAP_API + '/quote?' + new URLSearchParams(p));
+    const q = await r.json();
+    if (seq !== swapSeq) return;
+    if (!r.ok) throw new Error(q.error || ('API ' + r.status));
+    showQuote(q);
+  } catch (e) {
+    if (seq !== swapSeq) return;
+    $('swapQuote').textContent = 'Kurz sa nepodarilo načítať: ' + (e.message || e);
+  }
+}
+
+$('btn-swap').addEventListener('click', async () => {
+  const wallet = tonConnectUI.wallet;
+  if (!wallet || swapBusy) return;
+  if (String(wallet.account.chain) !== '-239') { say('Výmena funguje len na TON mainnete.', 'err'); return; }
+  const p = swapParams();
+  if (p.from === p.to || !(Number(p.amount) > 0)) { say('Vyber dva rôzne tokeny a zadaj sumu.', 'err'); return; }
+
+  swapBusy = true;
+  $('btn-swap').disabled = true;
+  say('Pripravujem výmenu…');
+  try {
+    const r = await fetch(SWAP_API + '/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...p, userAddress: wallet.account.address })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('API ' + r.status));
+    if (!data.quote || Number(data.quote.serviceFeeBps) !== SWAP_FEE_BPS || data.quote.referralAddress !== SWAP_REFERRAL) {
+      throw new Error('poplatok služby nesedí, transakcia sa neodoslala');
+    }
+    if (!Array.isArray(data.messages) || data.messages.length !== 1) throw new Error('STON.fi nevrátil transakciu');
+    showQuote(data.quote);
+    say('Čaká sa na potvrdenie v peňaženke…');
+    await tonConnectUI.sendTransaction({ validUntil: data.validUntil, messages: data.messages });
+    say('Výmena odoslaná. Tokeny prídu zvyčajne do minúty.', 'ok');
+    $('swapAmount').value = '';
+    setTimeout(() => { if (tonConnectUI.wallet) loadPortfolio(tonConnectUI.wallet); }, 15000);
+  } catch (e) {
+    const m = (e && e.message) ? e.message : String(e);
+    say(/reject|cancel|declin/i.test(m) ? 'Výmena bola zrušená v peňaženke.' : 'Výmena sa neuskutočnila: ' + m, /reject|cancel|declin/i.test(m) ? '' : 'err');
+  } finally {
+    swapBusy = false;
+    $('btn-swap').disabled = false;
   }
 });
 </script>
