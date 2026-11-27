@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TON Connect — peňaženka a portfólio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:     #08131d;
+    --surface: #0f2130;
+    --line:    #1c3448;
+    --blue:    #0098ea;
+    --mint:    #58d6a8;
+    --amber:   #f0b24a;
+    --text:    #e6f0f7;
+    --muted:   #7b93a7;
+    --radius:  14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-image: radial-gradient(70rem 40rem at 50% -18rem, rgba(0,152,234,.22), transparent 70%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 4rem 1.25rem 5rem;
+  }
+
+  main { width: 100%; max-width: 42rem; }
+
+  .eyebrow {
+    font-size: .75rem;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin: 0 0 1rem;
+  }
+
+  h1 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.2rem, 7vw, 3.4rem);
+    line-height: 1.02;
+    letter-spacing: -.03em;
+    margin: 0 0 .9rem;
+  }
+
+  .lede {
+    color: var(--muted);
+    font-size: .95rem;
+    line-height: 1.65;
+    max-width: 34rem;
+    margin: 0 0 2.5rem;
+  }
+
+  /* ---- state rail ---- */
+  .rail { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.75rem; }
+
+  .gem {
+    width: 13px; height: 13px; flex: none;
+    background: var(--muted);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    transition: background .35s ease;
+  }
+  .rail[data-state="waiting"] .gem:first-child { background: var(--amber); animation: pulse 1.6s ease-in-out infinite; }
+  .rail[data-state="connected"] .gem { background: var(--mint); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+  @media (prefers-reduced-motion: reduce) { .gem { animation: none !important } }
+
+  .rail span {
+    font-size: .8rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  #ton-connect { margin-bottom: 2.25rem; }
+
+  /* ---- total ---- */
+  .total { margin-bottom: 1.75rem; }
+  .total[hidden] { display: none; }
+
+  .total-label {
+    font-size: .68rem; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 0 0 .5rem;
+  }
+
+  .total-value {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: clamp(2.6rem, 10vw, 4rem);
+    font-weight: 700;
+    letter-spacing: -.035em;
+    line-height: 1;
+    margin: 0;
+  }
+
+  .total-sub { font-size: .8rem; color: var(--muted); margin: .6rem 0 0; }
+  .up { color: var(--mint); } .down { color: var(--amber); }
+
+  /* ---- panels ---- */
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: .35rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .panel[hidden] { display: none; }
+
+  .panel h2 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500;
+    margin: 1.1rem 0 .35rem;
+  }
+
+  .row {
+    display: flex; align-items: baseline; gap: 1rem;
+    padding: .85rem 0;
+    border-bottom: 1px solid rgba(28,52,72,.7);
+    font-size: .85rem;
+  }
+  .row:last-child { border-bottom: 0; }
+
+  .row dt, .asset-name {
+    color: var(--muted); letter-spacing: .08em;
+    text-transform: uppercase; font-size: .68rem;
+    flex: none; width: 7.5rem;
+  }
+  .row dd { margin: 0; word-break: break-all; }
+  .row dd a { color: var(--blue); text-decoration: none; }
+  .row dd a:hover { text-decoration: underline; }
+  dl { margin: 0; }
+
+  /* ---- assets ---- */
+  .asset {
+    display: flex; align-items: center; gap: .9rem;
+    padding: .8rem 0;
+    border-bottom: 1px solid rgba(28,52,72,.7);
+  }
+  .asset:last-child { border-bottom: 0; }
+
+  .asset img {
+    width: 26px; height: 26px; border-radius: 50%;
+    flex: none; background: var(--line);
+  }
+  .asset .sym {
+    flex: none; width: 5.5rem;
+    font-size: .82rem; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .asset .amt { flex: 1; font-size: .82rem; color: var(--muted); text-align: right; }
+  .asset .eur { flex: none; width: 6.5rem; font-size: .82rem; text-align: right; }
+
+  /* ---- actions ---- */
+  .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 2.5rem; }
+  .actions[hidden] { display: none; }
+
+  button.act {
+    font-family: inherit; font-size: .85rem; color: var(--text);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: .7rem 1.1rem; cursor: pointer;
+    transition: border-color .2s, color .2s;
+  }
+  button.act:hover { border-color: var(--blue); color: var(--blue); }
+  button.act:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  button.act:disabled { opacity: .45; cursor: not-allowed; }
+
+  .send-form { display: flex; flex-direction: column; gap: .6rem; padding: .9rem 0 1.1rem; }
+  .send-form label {
+    display: block; font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: .35rem;
+  }
+  .send-form input {
+    font-family: inherit; font-size: .85rem; color: var(--text);
+    background: transparent; border: 1px solid var(--line); border-radius: 8px;
+    padding: .6rem .75rem; width: 100%;
+  }
+  .send-form input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; border-color: var(--blue); }
+  .send-form .hint { font-size: .72rem; color: var(--muted); line-height: 1.5; margin: 0; }
+  .send-form button { align-self: flex-start; }
+
+  .log {
+    font-size: .78rem; line-height: 1.7; color: var(--muted);
+    border-left: 2px solid var(--line);
+    padding-left: 1rem; margin-bottom: 3rem; min-height: 1.7em;
+  }
+  .log b { color: var(--text); font-weight: 500; }
+  .log .ok { color: var(--mint); }
+  .log .err { color: var(--amber); }
+
+  .note {
+    font-size: .78rem; line-height: 1.8; color: var(--muted);
+    border-top: 1px solid var(--line); padding-top: 1.25rem;
+  }
+  .note code {
+    color: var(--text); background: rgba(0,152,234,.1);
+    padding: .1rem .35rem; border-radius: 4px;
+  }
+
+  /* ---- currency picker ---- */
+  .settings { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.75rem; }
+  .settings label {
+    font-size: .68rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+  }
+  .settings select {
+    font-family: inherit; font-size: .8rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: .35rem .6rem; cursor: pointer;
+  }
+  .settings select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* ---- transactions ---- */
+  .tx {
+    display: flex; align-items: baseline; gap: .9rem;
+    padding: .8rem 0;
+    border-bottom: 1px solid rgba(28,52,72,.7);
+    font-size: .82rem;
+  }
+  .tx:last-child { border-bottom: 0; }
+  .tx-time { flex: none; width: 9.5rem; color: var(--muted); font-size: .74rem; }
+  .tx-label { flex: 1; }
+  .tx-amt { flex: none; text-align: right; }
+  .muted { color: var(--muted); font-size: .82rem; margin: .8rem 0; }
+
+  @media (max-width: 30rem) {
+    .row { flex-direction: column; gap: .3rem; }
+    .row dt { width: auto; }
+    .asset .sym { width: 4.5rem; }
+    .asset .eur { width: 5rem; }
+    .tx { flex-direction: column; gap: .2rem; }
+    .tx-time { width: auto; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">TON Connect v2</p>
+  <h1>Peňaženka a portfólio</h1>
+  <p class="lede">
+    Pripoj peňaženku a stránka načíta zostatok TON, všetky jettony a ich
+    aktuálnu hodnotu v eurách. Dáta idú z verejného tonapi.io — adresa nikam
+    inam neodchádza, čítať sa dá len to, čo je aj tak na blockchaine verejné.
+  </p>
+
+  <div class="settings">
+    <label for="currencySelect">Mena</label>
+    <select id="currencySelect">
+      <option value="eur">EUR</option>
+      <option value="usd">USD</option>
+      <option value="czk">CZK</option>
+      <option value="rub">RUB</option>
+    </select>
+  </div>
+
+  <div class="rail" id="rail" data-state="waiting">
+    <i class="gem"></i><i class="gem"></i><i class="gem"></i>
+    <span id="railText">Čaká sa na pripojenie</span>
+  </div>
+
+  <div id="ton-connect"></div>
+
+  <div class="total" id="total" hidden>
+    <p class="total-label">Hodnota portfólia</p>
+    <p class="total-value" id="totalValue">—</p>
+    <p class="total-sub" id="totalSub"></p>
+  </div>
+
+  <section class="panel" id="assets" hidden>
+    <h2>Aktíva</h2>
+    <div id="assetList"></div>
+  </section>
+
+  <section class="panel" id="txs" hidden>
+    <h2>Posledné transakcie</h2>
+    <div id="txList"></div>
+  </section>
+
+  <section class="panel" id="panel" hidden>
+    <h2>Pripojenie</h2>
+    <dl>
+      <div class="row"><dt>Peňaženka</dt><dd id="v-wallet">—</dd></div>
+      <div class="row"><dt>Adresa</dt><dd id="v-address">—</dd></div>
+      <div class="row"><dt>Sieť</dt><dd id="v-chain">—</dd></div>
+      <div class="row"><dt>Platforma</dt><dd id="v-platform">—</dd></div>
+    </dl>
+  </section>
+
+  <section class="panel" id="sendPanel" hidden>
+    <h2>Odoslať TON</h2>
+    <div class="send-form">
+      <div>
+        <label for="sendTo">Adresa príjemcu</label>
+        <input type="text" id="sendTo" placeholder="EQ... alebo UQ...">
+      </div>
+      <div>
+        <label for="sendAmount">Suma (TON)</label>
+        <input type="text" id="sendAmount" inputmode="decimal" placeholder="0.0">
+      </div>
+      <button class="act" id="btn-send" type="button">Odoslať</button>
+      <p class="hint">
+        Transakciu vždy potvrdzuješ vo svojej peňaženke — táto appka ju len navrhne.
+        Nepridáva komentár/memo; ak ho cieľová adresa (napr. depozitná adresa burzy)
+        vyžaduje, pošli radšej priamo cez appku peňaženky, inak sa platba nemusí
+        správne priradiť.
+      </p>
+    </div>
+  </section>
+
+  <div class="actions" id="actions" hidden>
+    <button class="act" id="btn-refresh">Obnoviť zostatok</button>
+    <button class="act" id="btn-copy">Kopírovať adresu</button>
+    <button class="act" id="btn-out">Odpojiť</button>
+  </div>
+
+  <p class="log" id="log"></p>
+
+  <p class="note">
+    Manifest musí byť na verejnej HTTPS adrese — hodnotu <code>MANIFEST_URL</code>
+    v skripte prepíš na svoju. Otvorenie cez <code>file://</code> nefunguje,
+    stránka musí bežať na HTTP(S) serveri. Ceny sú orientačné, tonapi.io
+    berie kurzy z burzových dát a pri malých jettonoch môžu byť nepresné.
+  </p>
+</main>
+
+<script src="https://unpkg.com/@tonconnect/ui@5.0.4/dist/tonconnect-ui.min.js"></script>
+<script>
+/* ===========================================================
+   NASTAVENIE
+   =========================================================== */
+
+const MANIFEST_URL = new URL('tonconnect-manifest.json', window.location.href).href;
+const WALLETS_LIST_URL = null;   // napr. new URL('wallets.json', location.href).href
+const CURRENCIES = ['eur', 'usd', 'czk', 'rub'];
+let CURRENCY = localStorage.getItem('tc_currency') || 'eur';
+if (!CURRENCIES.includes(CURRENCY)) CURRENCY = 'eur';
+
+/* =========================================================== */
+
+const $ = (id) => document.getElementById(id);
+const log = $('log');
+const say = (msg, kind) => log.innerHTML = kind ? `<span class="${kind}">${msg}</span>` : msg;
+
+const options = {
+  manifestUrl: MANIFEST_URL,
+  buttonRootId: 'ton-connect',
+  uiPreferences: { theme: 'DARK' },
+  language: 'en'
+};
+if (WALLETS_LIST_URL) options.walletsListSource = WALLETS_LIST_URL;
+
+const tonConnectUI = new TON_CONNECT_UI.TonConnectUI(options);
+
+const CHAINS = { '-239': 'mainnet', '-3': 'testnet' };
+const apiBase = (chain) => chain === '-3'
+  ? 'https://testnet.tonapi.io/v2'
+  : 'https://tonapi.io/v2';
+
+const money = (v) => new Intl.NumberFormat('sk-SK', { style: 'currency', currency: CURRENCY.toUpperCase() }).format(v);
+const num = (v, d = 4) => new Intl.NumberFormat('sk-SK', { maximumFractionDigits: d }).format(v);
+
+$('currencySelect').value = CURRENCY;
+$('currencySelect').addEventListener('change', (e) => {
+  CURRENCY = e.target.value;
+  localStorage.setItem('tc_currency', CURRENCY);
+  if (tonConnectUI.wallet) loadPortfolio(tonConnectUI.wallet);
+});
+
+// z prices objektu vytiahne hodnotu bez ohľadu na veľkosť písmen kľúča
+function priceOf(prices) {
+  if (!prices) return null;
+  const key = Object.keys(prices).find(k => k.toLowerCase() === CURRENCY);
+  return key ? prices[key] : null;
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('API ' + r.status);
+  return r.json();
+}
+
+/* ---------- načítanie portfólia ---------- */
+
+async function loadPortfolio(wallet) {
+  const addr = wallet.account.address;
+  const base = apiBase(wallet.account.chain);
+
+  say('Načítavam zostatok…');
+  $('btn-refresh').disabled = true;
+
+  try {
+    const [account, jettons, rates] = await Promise.all([
+      getJSON(`${base}/accounts/${addr}`),
+      getJSON(`${base}/accounts/${addr}/jettons?currencies=${CURRENCY}`),
+      getJSON(`${base}/rates?tokens=ton&currencies=${CURRENCY}`)
+    ]);
+
+    const tonRate = rates.rates && rates.rates.TON;
+    const tonPrice = priceOf(tonRate && tonRate.prices) || 0;
+    const diff = tonRate && tonRate.diff_24h ? priceOf(tonRate.diff_24h) : null;
+
+    const tonAmount = Number(account.balance) / 1e9;
+    const tonValue = tonAmount * tonPrice;
+
+    const items = [{
+      symbol: 'TON',
+      name: 'Toncoin',
+      image: 'https://ton.org/download/ton_symbol.png',
+      amount: tonAmount,
+      value: tonValue
+    }];
+
+    (jettons.balances || []).forEach(b => {
+      const dec = b.jetton.decimals != null ? b.jetton.decimals : 9;
+      const amount = Number(b.balance) / Math.pow(10, dec);
+      if (!amount) return;
+      const p = priceOf(b.price && b.price.prices);
+      items.push({
+        symbol: b.jetton.symbol || '?',
+        name: b.jetton.name || '',
+        image: b.jetton.image,
+        amount,
+        value: p ? amount * p : null
+      });
+    });
+
+    items.sort((a, b) => (b.value || 0) - (a.value || 0));
+    const total = items.reduce((s, i) => s + (i.value || 0), 0);
+
+    $('totalValue').textContent = money(total);
+    $('totalSub').innerHTML =
+      `${num(tonAmount)} TON · kurz ${money(tonPrice)}` +
+      (diff ? ` · <span class="${/^[-\u2212]/.test(String(diff)) ? 'down' : 'up'}">${diff} za 24 h</span>` : '');
+    $('total').hidden = false;
+
+    $('assetList').innerHTML = items.map(i => `
+      <div class="asset">
+        <img src="${i.image || ''}" alt="" onerror="this.style.visibility='hidden'">
+        <span class="sym" title="${i.name}">${i.symbol}</span>
+        <span class="amt">${num(i.amount, 4)}</span>
+        <span class="eur">${i.value != null ? money(i.value) : '—'}</span>
+      </div>`).join('');
+    $('assets').hidden = false;
+
+    say(`Aktualizované ${new Date().toLocaleTimeString('sk-SK')} · ${items.length} aktív.`, 'ok');
+  } catch (e) {
+    say('Zostatok sa nepodarilo načítať: ' + (e.message || e), 'err');
+  } finally {
+    $('btn-refresh').disabled = false;
+  }
+
+  loadTransactions(wallet);
+}
+
+/* ---------- história transakcií ---------- */
+
+function describeAction(action, addr) {
+  const t = action.type;
+
+  if (t === 'TonTransfer' && action.TonTransfer) {
+    const tr = action.TonTransfer;
+    const out = tr.sender && tr.sender.address === addr;
+    const amount = Number(tr.amount) / 1e9;
+    return { label: out ? 'Odoslané' : 'Prijaté', detail: `${out ? '-' : '+'}${num(amount)} TON`, cls: out ? 'down' : 'up' };
+  }
+
+  if (t === 'JettonTransfer' && action.JettonTransfer) {
+    const tr = action.JettonTransfer;
+    const out = tr.sender && tr.sender.address === addr;
+    const dec = tr.jetton && tr.jetton.decimals != null ? tr.jetton.decimals : 9;
+    const amount = Number(tr.amount) / Math.pow(10, dec);
+    const sym = (tr.jetton && tr.jetton.symbol) || '?';
+    return { label: out ? 'Odoslané' : 'Prijaté', detail: `${out ? '-' : '+'}${num(amount)} ${sym}`, cls: out ? 'down' : 'up' };
+  }
+
+  const labels = { ContractDeploy: 'Nasadenie kontraktu', NftItemTransfer: 'Prevod NFT', SmartContractExec: 'Volanie kontraktu' };
+  return { label: labels[t] || t || 'Iná udalosť', detail: '', cls: '' };
+}
+
+async function loadTransactions(wallet) {
+  const addr = wallet.account.address;
+  const base = apiBase(wallet.account.chain);
+
+  try {
+    const events = await getJSON(`${base}/accounts/${addr}/events?limit=8`);
+    const list = events.events || [];
+
+    if (!list.length) {
+      $('txList').innerHTML = '<p class="muted">Zatiaľ žiadne transakcie.</p>';
+    } else {
+      $('txList').innerHTML = list.map(ev => {
+        const action = (ev.actions && ev.actions[0]) || { type: 'Unknown' };
+        const d = describeAction(action, addr);
+        const time = new Date(ev.timestamp * 1000).toLocaleString('sk-SK');
+        return `<div class="tx">
+          <span class="tx-time">${time}</span>
+          <span class="tx-label">${d.label}</span>
+          <span class="tx-amt ${d.cls}">${d.detail}</span>
+        </div>`;
+      }).join('');
+    }
+    $('txs').hidden = false;
+  } catch (e) {
+    $('txList').innerHTML = `<p class="muted">História sa nepodarila načítať: ${e.message || e}</p>`;
+    $('txs').hidden = false;
+  }
+}
+
+/* ---------- stav pripojenia ---------- */
+
+function render(wallet) {
+  const rail = $('rail');
+
+  if (!wallet) {
+    rail.dataset.state = 'waiting';
+    $('railText').textContent = 'Čaká sa na pripojenie';
+    ['panel', 'actions', 'total', 'assets', 'sendPanel', 'txs'].forEach(id => $(id).hidden = true);
+    return;
+  }
+
+  const addr = wallet.account.address;
+  rail.dataset.state = 'connected';
+  $('railText').textContent = 'Pripojené';
+  $('v-wallet').textContent = wallet.device.appName + ' ' + wallet.device.appVersion;
+  $('v-address').innerHTML = `<a href="https://tonviewer.com/${addr}" target="_blank" rel="noopener">${addr}</a>`;
+  $('v-chain').textContent = CHAINS[wallet.account.chain] || wallet.account.chain;
+  $('v-platform').textContent = wallet.device.platform;
+  $('panel').hidden = false;
+  $('actions').hidden = false;
+  $('sendPanel').hidden = false;
+
+  loadPortfolio(wallet);
+}
+
+tonConnectUI.connectionRestored.then(() => render(tonConnectUI.wallet));
+tonConnectUI.onStatusChange(render);
+
+$('btn-refresh').addEventListener('click', () => {
+  if (tonConnectUI.wallet) loadPortfolio(tonConnectUI.wallet);
+});
+
+$('btn-copy').addEventListener('click', async () => {
+  if (!tonConnectUI.wallet) return;
+  await navigator.clipboard.writeText(tonConnectUI.wallet.account.address);
+  say('Adresa skopírovaná.', 'ok');
+});
+
+$('btn-out').addEventListener('click', () => tonConnectUI.disconnect());
+
+/* ---------- odoslanie TON ---------- */
+
+// desatinný reťazec TON -> nanoTON (celočíselný string), bez zaokrúhľovacích chýb float
+function toNano(amountStr) {
+  const s = String(amountStr).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error('zlý formát');
+  const [intPart, fracPart = ''] = s.split('.');
+  if (fracPart.length > 9) throw new Error('príliš veľa desatinných miest');
+  const frac = fracPart.padEnd(9, '0');
+  return (BigInt(intPart) * 1000000000n + BigInt(frac || '0')).toString();
+}
+
+$('btn-send').addEventListener('click', async () => {
+  if (!tonConnectUI.wallet) return;
+
+  const to = $('sendTo').value.trim();
+  const amountStr = $('sendAmount').value.trim();
+
+  if (!to) { say('Zadaj adresu príjemcu.', 'err'); return; }
+
+  let nano;
+  try {
+    nano = toNano(amountStr);
+    if (BigInt(nano) <= 0n) throw new Error();
+  } catch {
+    say('Zadaj platnú sumu (napr. 1.5).', 'err');
+    return;
+  }
+
+  $('btn-send').disabled = true;
+  say('Čaká sa na potvrdenie v peňaženke…');
+
+  try {
+    await tonConnectUI.sendTransaction({
+      validUntil: Math.floor(Date.now() / 1000) + 300,
+      messages: [{ address: to, amount: nano }]
+    });
+    say('Transakcia odoslaná. Zostatok sa aktualizuje o pár desiatok sekúnd.', 'ok');
+    $('sendAmount').value = '';
+    setTimeout(() => { if (tonConnectUI.wallet) loadPortfolio(tonConnectUI.wallet); }, 8000);
+  } catch (e) {
+    say('Transakcia sa neuskutočnila: ' + (e.message || e), 'err');
+  } finally {
+    $('btn-send').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
